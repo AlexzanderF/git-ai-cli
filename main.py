@@ -19,6 +19,11 @@ def main():
         type=int,
         help="The IID (internal ID) of the Merge Request to analyze (e.g., 123)."
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Save the full prompt to a debug file (e.g., debug_prompt_mr_123.md)."
+    )
     args = parser.parse_args()
 
     gitlab_url = os.getenv("GITLAB_URL")
@@ -129,13 +134,16 @@ def main():
 
     print("🧠 Generating a summary... (This may take a moment)")
     
-    # Save prompt to a debug file
-    debug_filename = f"debug_prompt_mr_{args.mr_id}.md"
-    try:
-        with open(debug_filename, 'w', encoding='utf-8') as f:
-            f.write(prompt)
-    except IOError as e:
-        pass
+    # Save prompt to a debug file if requested
+    if args.debug:
+        debug_filename = f"debug_prompt_mr_{args.mr_id}.md"
+        try:
+            with open(debug_filename, 'w', encoding='utf-8') as f:
+                f.write(prompt)
+            print(f"🐛 Debug prompt saved to: {debug_filename}")
+        except IOError as e:
+            print(f"❌ Error writing debug file {debug_filename}: {e}")
+            pass
         
     try:
         response = model.generate_content(prompt)
