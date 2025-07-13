@@ -60,38 +60,11 @@ def main():
         project = gl.projects.get(project_id)
         mr = project.mergerequests.get(args.mr_id)
 
-        # Get commit messages with branch info
+        # Get commit messages
         commits = list(mr.commits(all=True))
         print(f"✅ Found {len(commits)} commits.")
 
-        commit_messages_list = []
-        for i, commit in enumerate(commits):
-            commit_title = f"- {commit.title}"
-            try:
-                # This makes an API call for each commit to get its refs (branches/tags)
-                full_commit = project.commits.get(commit.id)
-                refs = full_commit.refs.list(all=True)
-
-                # Filter for branches, excluding the MR's own source and target branches
-                branches = [
-                    ref.name for ref in refs
-                    if ref.type == 'branch' and
-                       ref.name != mr.source_branch and
-                       ref.name != mr.target_branch
-                ]
-
-                if branches:
-                    # Take the first associated branch assumed to be where the commit was made.
-                    original_branch = branches[0]
-                    # Extract the category from the branch name (e.g., 'feature' from 'feature/add-button')
-                    branch_type = original_branch.split('/')[0]
-                    commit_title += f" ({branch_type})"
-
-            except gitlab.exceptions.GitlabError as e:
-                pass
-
-            commit_messages_list.append(commit_title)
-
+        commit_messages_list = [f"- {commit.title}" for commit in commits]
         commit_messages = "\n".join(commit_messages_list)
 
         # Get code diffs
