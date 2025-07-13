@@ -86,7 +86,7 @@ def main():
 
     **Guidelines:**
     - **Audience:** Our clients are not technical. Avoid jargon, file paths, and function names.
-    - **Tone:** Friendly, professional, and exciting.
+    - **Tone:** Friendly, professional, and exciting. Be concise and to the point.
     - **Format:** Use Markdown. Start with a brief, engaging overview paragraph. Then create two sections: '✨ New Features' and '🐛 Bug Fixes'.
     - **Focus:** Translate technical actions into client benefits. For example, "Refactored the user auth service" should become "We've improved the speed and security of logging in."
     - **Content:** Base your summary ONLY on the information provided. Ignore internal changes (e.g., CI/CD, tests, documentation) unless they have a direct client-facing impact.
@@ -105,8 +105,6 @@ def main():
     --- END CODE CHANGES / DIFFERENCES ---
     """
 
-    print("🧠 Generating a summary... (This may take a moment)")
-    
     # Save prompt to a debug file if requested
     if args.debug:
         debug_filename = f"debug_prompt_mr_{args.mr_id}.md"
@@ -117,7 +115,8 @@ def main():
         except IOError as e:
             print(f"❌ Error writing debug file {debug_filename}: {e}")
             pass
-        
+
+    print("🧠 Generating a summary... (This may take a moment)")
     try:
         response = model.generate_content(prompt)
         release_summary = response.text
