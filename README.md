@@ -55,20 +55,27 @@ export GEMINI_API_KEY="your_gemini_api_key"
 To run the script, use the following command, replacing `123` with the IID (Internal ID) of your Merge Request.
 
 ```bash
-python3 main.py <mr_id>
+python3 main.py <mr_id> [--style clients|devops|developers] [--debug]
 ```
 
 ### Example
 
 ```bash
+# Clients style (default)
 python3 main.py 42
+
+# DevOps style
+python3 main.py 42 --style devops
+
+# Developers style
+python3 main.py 42 --style developers
 ```
 
 This command will:
 1.  Fetch data for Merge Request `!42` from the configured GitLab project.
 2.  Generate a summary using Gemini.
 3.  Print the summary to the console.
-4.  Save the summary to a file named `release_summary_mr_42.md`.
+4.  Save the summary to a file named `release_summary_mr_42.<style>.md` (e.g., `release_summary_mr_42.clients.md`).
 
 ### Debug Mode
 
@@ -78,7 +85,15 @@ If you want to inspect the prompt that is sent to the Gemini API, you can use th
 python3 main.py 42 --debug
 ```
 
-This will create an additional file named `debug_prompt_mr_42.md` containing the full prompt.
+This will create an additional file named `debug_prompt_mr_42.<style>.md` (e.g., `debug_prompt_mr_42.clients.md`) containing the full prompt.
+
+## Styles
+
+Choose the `--style` that best matches your target audience. Default is `clients`.
+
+-   **clients**: Benefit-oriented, non-technical “What’s New” for customers. Uses friendly tone and focuses on outcomes. Sections: New Features, Bug Fixes.
+-   **devops**: Operational brief for DevOps/SRE. Highlights environment variables, database migrations, seeds, infrastructure/IaC, CI/CD, logging/monitoring, security, dependencies, operational tasks/runbook, and breaking changes.
+-   **developers**: Technical synopsis for implementers. Sections may include: Features/Enhancements, Bug Fixes, Refactors, API Changes, Configuration (incl. env vars), Database, Dependencies/Tooling, Tests, Known Issues, Deployment Checklist.
 
 ## Output Example
 
