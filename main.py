@@ -9,7 +9,7 @@ import gitlab
 import google.generativeai as genai
 
 GEMINI_MODEL="gemini-2.5-flash"
-CONFIG_DIR = os.path.expanduser("~/.gitlab-helper")
+CONFIG_DIR = os.path.expanduser("~/.git-ai")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.toml")
 
 # --- PROMPT TEMPLATES ---
@@ -201,7 +201,7 @@ Merge Request Description: {mr_description}
 def parse_args():
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
-        description="GitLab helper CLI",
+        description="Git Remote Repository CLI AI Tool",
         formatter_class=argparse.RawTextHelpFormatter
     )
 
