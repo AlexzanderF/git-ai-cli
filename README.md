@@ -14,23 +14,44 @@ This command-line tool generates a "What's New" summary for a GitLab Merge Reque
 
 Before you begin, ensure you have the following:
 
--   Python 3.6+
+-   Python 3.8+
 -   A GitLab account with access to the target project.
 -   A [GitLab Personal Access Token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html) with `api` scope.
 -   A [Google Gemini API Key](https://ai.google.dev/gemini-api/docs/api-key).
 
 ## Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/gitlab-merge-request-summary.git
-    cd gitlab-merge-request-summary
-    ```
+### Install with pipx (recommended)
 
-2.  **Install the required Python packages:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+Use pipx to install and run the CLI in an isolated virtual environment, available globally as `git-ai`:
+
+```bash
+# If you don't have pipx yet (macOS/Homebrew)
+brew list pipx >/dev/null 2>&1 || brew install pipx
+pipx ensurepath
+
+# From a cloned repo or local path
+git clone https://github.com/your-username/gitlab-merge-request-summary.git
+cd gitlab-merge-request-summary
+pipx install .
+
+# Upgrade later
+pipx upgrade git-ai
+```
+
+You can also install directly from Git using:
+
+```bash
+pipx install git+https://github.com/your-username/git-ai.git
+```
+
+After installation, the global command is `git-ai`.
+
+### Install with pip (alternative)
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Configuration
 
@@ -63,29 +84,39 @@ GEMINI_API_KEY = "<gemini_api_key>"
 
 ## Usage
 
-To run the script, use the following command, replacing `123` with the IID (Internal ID) of your Merge Request.
+After installation with pipx, use the global command `git-ai`. Replace `123` with the IID (Internal ID) of your Merge Request.
 
 ```bash
-python3 main.py summarize <mr_id> [--style clients|devops|developers|all ...] [--debug]
+git-ai summarize <mr_id> [--style clients|devops|developers|all ...] [--debug]
 ```
+
+### Code review (developers)
+
+Generate a comprehensive code review from MR diffs:
+
+```bash
+git-ai code-review <mr_id> [--debug]
+```
+
+Outputs a `code_review_mr_<iid>.md` with structured findings (security, correctness, performance, readability, API, migrations, observability, tests, dependencies, risk/rollback) and an actionable checklist.
 
 ### Example
 
 ```bash
 # All styles in one run (default)
-python3 main.py summarize 42
+git-ai summarize 42
 
 # Clients style
-python3 main.py summarize 42 --style clients
+git-ai summarize 42 --style clients
 
 # DevOps style
-python3 main.py summarize 42 --style devops
+git-ai summarize 42 --style devops
 
 # Developers style
-python3 main.py summarize 42 --style developers
+git-ai summarize 42 --style developers
 
 # Multiple styles in one run
-python3 main.py summarize 42 --style clients devops
+git-ai summarize 42 --style clients devops
 ```
 
 This command will:
