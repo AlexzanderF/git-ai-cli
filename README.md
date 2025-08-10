@@ -31,8 +31,8 @@ brew list pipx >/dev/null 2>&1 || brew install pipx
 pipx ensurepath
 
 # From a cloned repo or local path
-git clone https://github.com/your-username/gitlab-merge-request-summary.git
-cd gitlab-merge-request-summary
+git clone https://github.com/AlexzanderF/git-ai-cli.git
+cd git-ai-cli
 pipx install .
 
 # Upgrade later
@@ -42,7 +42,7 @@ pipx upgrade git-ai
 You can also install directly from Git using:
 
 ```bash
-pipx install git+https://github.com/your-username/git-ai.git
+pipx install git+https://github.com/AlexzanderF/git-ai-cli.git
 ```
 
 After installation, the global command is `git-ai`.
@@ -53,27 +53,9 @@ After installation, the global command is `git-ai`.
 pip install -r requirements.txt
 ```
 
-## Configuration
-
-This tool requires several environment variables to be set to authenticate with the GitLab and Gemini APIs.
-
-You can set them in your shell session or add them to your shell's profile file (e.g., `~/.zshrc` or `~/.bash_profile`).
-
-```bash
-export GITLAB_URL="https://gitlab.com"
-export GITLAB_PRIVATE_TOKEN="your_gitlab_personal_access_token"
-export GITLAB_PROJECT_ID="your_project_id"
-export GEMINI_API_KEY="your_gemini_api_key"
-```
-
--   `GITLAB_URL`: The base URL of your GitLab instance (e.g., `https://gitlab.com`).
--   `GITLAB_PRIVATE_TOKEN`: Your GitLab Personal Access Token.
--   `GITLAB_PROJECT_ID`: The ID of your project. You can find this on your project's home page in GitLab, under the project name.
--   `GEMINI_API_KEY`: Your API key for the Google Gemini service.
-
 ### Persisting configuration (TOML)
 
-When required values are missing, the tool will prompt you interactively and then persist them to `~/.gitlab-helper/config.toml` automatically. Subsequent runs will load values from the config file. Precedence matches AWS CLI: command-line flags > environment variables > config file. Example `config.toml`:
+When required values are missing, the tool will prompt you interactively and then persist them to `~/.git-ai/config.toml` automatically. Subsequent runs will load values from the config file. Precedence matches AWS CLI: command-line flags > environment variables > config file. Example `config.toml`:
 
 ```toml
 GITLAB_URL = "https://gitlab.com"
@@ -84,60 +66,61 @@ GEMINI_API_KEY = "<gemini_api_key>"
 
 ## Usage
 
-After installation with pipx, use the global command `git-ai`. Replace `123` with the IID (Internal ID) of your Merge Request.
+After installation with `pipx`, use the global command `git-ai`. The tool provides two main commands: `summarize` and `code-review`.
+
+### Summarize a Merge Request
+
+Generates a "What's New" summary for a GitLab Merge Request, tailored to different audiences.
 
 ```bash
-git-ai summarize <mr_id> [--style clients|devops|developers|all ...] [--debug]
+git-ai summarize <mr_id> [--style <style1> <style2>...] [--debug]
 ```
 
-### Code review (developers)
+-   `<mr_id>`: The IID (Internal ID) of the Merge Request to analyze (e.g., `42`).
+-   `--style`: One or more summary styles. Choices: `clients`, `devops`, `developers`. You can also use `all` to generate all of them. If omitted, it defaults to generating all styles.
+-   `--debug`: Save the full prompt to a debug file for inspection.
 
-Generate a comprehensive code review from MR diffs:
+#### Examples
+
+```bash
+# Generate summaries for all styles (default behavior)
+git-ai summarize 42
+
+# Generate a client-focused summary
+git-ai summarize 42 --style clients
+
+# Generate summaries for both developers and devops
+git-ai summarize 42 --style developers devops
+```
+
+This command will:
+1.  Fetch data for the specified Merge Request from the configured GitLab project.
+2.  Generate a summary for each specified style using Gemini.
+3.  Print the summaries to the console.
+4.  Save each summary to a file named `release_summary_mr_<iid>.<style>.md` (e.g., `release_summary_mr_42.clients.md`).
+
+### Review a Merge Request's Code
+
+Generates a comprehensive, structured code review from the Merge Request's diffs.
 
 ```bash
 git-ai code-review <mr_id> [--debug]
 ```
 
-Outputs a `code_review_mr_<iid>.md` with structured findings (security, correctness, performance, readability, API, migrations, observability, tests, dependencies, risk/rollback) and an actionable checklist.
+-   `<mr_id>`: The IID of the Merge Request to review.
+-   `--debug`: Save the full prompt to a debug file.
 
-### Example
-
-```bash
-# All styles in one run (default)
-git-ai summarize 42
-
-# Clients style
-git-ai summarize 42 --style clients
-
-# DevOps style
-git-ai summarize 42 --style devops
-
-# Developers style
-git-ai summarize 42 --style developers
-
-# Multiple styles in one run
-git-ai summarize 42 --style clients devops
-```
-
-This command will:
-1.  Fetch data for Merge Request `!42` from the configured GitLab project.
-2.  Generate a summary using Gemini.
-3.  Print the summary to the console.
-4.  Save the summary to a file named `release_summary_mr_42.<style>.md` (e.g., `release_summary_mr_42.clients.md`).
+This command outputs a `code_review_mr_<iid>.md` file containing a detailed review with structured findings on security, correctness, performance, readability, and more, along with an actionable checklist.
 
 ### Debug Mode
 
-If you want to inspect the prompt that is sent to the Gemini API, you can use the `--debug` flag.
+For both `summarize` and `code-review`, you can use the `--debug` flag to inspect the exact prompt being sent to the Gemini API.
 
-```bash
-python3 main.py summarize 42 --debug
-```
-
-This will create an additional file named `debug_prompt_mr_42.<style>.md` (e.g., `debug_prompt_mr_42.clients.md`) containing the full prompt.
+This will create an additional file named `debug_prompt_mr_<iid>.<style>.md` (for summaries) or `debug_code_review_prompt_mr_<iid>.md` (for code reviews).
 
 ## Styles
 
-Choose the `--style` that best matches your target audience. Default is `clients`.
+Choose one or more `--style` options for the `summarize` command to match your target audience. If you don't provide a style, summaries for **all** audiences will be generated by default.
 
 -   **clients**: Benefit-oriented, non-technical “What’s New” for customers. Uses friendly tone and focuses on outcomes. Sections: New Features, Bug Fixes.
 -   **devops**: Operational brief for DevOps/SRE. Highlights environment variables, database migrations, seeds, infrastructure/IaC, CI/CD, logging/monitoring, security, dependencies, operational tasks/runbook, and breaking changes.
