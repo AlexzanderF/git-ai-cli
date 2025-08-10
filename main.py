@@ -133,6 +133,71 @@ PROMPT_TEMPLATES = {
     "developers": DEVELOPERS_PROMPT_TEMPLATE,
 }
 
+# --- CODE REVIEW PROMPT TEMPLATE ---
+CODE_REVIEW_PROMPT_TEMPLATE = """
+You are a seasoned staff-level engineer performing a thorough code review of a GitLab Merge Request.
+Use ONLY the provided commit messages and diffs. Do not invent context. If something is ambiguous, mark it as "Needs verification".
+
+Produce a high-signal, developer-facing review in Markdown with the following structure. Be concrete and actionable.
+
+1. Summary
+   - One short paragraph that explains the scope and main risk areas.
+
+2. High-Priority Findings (BLOCKER/MAJOR)
+   - For each, include: [SEVERITY] File path (and function/class if visible), What’s wrong, Why it matters, How to fix (with a concise code snippet if helpful).
+
+3. Security
+   - Secrets handling, injection risks, authz/authn checks, SSRF, XSS, CSRF, path traversal, unsafe deserialization, dependency vulnerabilities.
+
+4. Correctness & Robustness
+   - Edge cases, error handling, input validation, null/None checks, off-by-one, race conditions, concurrency issues.
+
+5. Performance
+   - Hot paths, N+1 queries, unnecessary allocations, blocking I/O, inefficient algorithms, cache opportunities.
+
+6. Readability & Maintainability
+   - Naming, complexity, duplication (DRY), separation of concerns, dead code, comments/docstrings needed, file structure.
+
+7. API & Contracts
+   - Backward compatibility, request/response shape changes, error codes, pagination, headers, deprecations, versioning.
+
+8. Data & Migrations
+   - Migrations safety (forwards/backwards), data transformations, downtime risk, long-running tasks, indexes.
+
+9. Observability
+   - Logging levels/PII, metrics, tracing spans, dashboards, alerts, sampling.
+
+10. Tests
+   - Missing/fragile tests, coverage gaps, mocking issues, e2e cases to add.
+
+11. Dependencies & Build
+   - New/updated packages, licensing, supply chain, build/runtime changes.
+
+12. Risk & Rollback
+   - Feature flags/toggles, rollout plan, rollback strategy, safeguards.
+
+Finish with:
+13. Actionable Checklist
+   - A concise checklist of the most important follow-ups grouped by severity.
+
+Guidelines:
+- Reference specific files and hunks when possible. Prefer: path:line range (from diff context) when the information is present.
+- Use severity tags: [BLOCKER], [MAJOR], [MINOR], [NIT]. Keep nitpicks short.
+- Prioritize impact and clarity over volume. Avoid generic advice.
+- Do not include files or topics not present in the diffs.
+
+Merge Request Title: {mr_title}
+Merge Request Description: {mr_description}
+
+--- BEGIN COMMIT MESSAGES ---
+{commit_messages}
+--- END COMMIT MESSAGES ---
+
+--- BEGIN CODE CHANGES (WITH FILE PATHS) ---
+{labeled_code_diffs}
+--- END CODE CHANGES (WITH FILE PATHS) ---
+"""
+
 def parse_args():
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
@@ -142,10 +207,34 @@ def parse_args():
 
     subparsers = parser.add_subparsers(dest="command")
 
+    # Common config overrides (shared across subcommands)
+    common_config = argparse.ArgumentParser(add_help=False)
+    common_config.add_argument(
+        "--gitlab-url",
+        dest="gitlab_url",
+        help="Override GitLab URL (env: GITLAB_URL)."
+    )
+    common_config.add_argument(
+        "--gitlab-private-token",
+        dest="gitlab_private_token",
+        help="Override GitLab Personal Access Token (env: GITLAB_PRIVATE_TOKEN)."
+    )
+    common_config.add_argument(
+        "--gitlab-project-id",
+        dest="gitlab_project_id",
+        help="Override GitLab Project ID (env: GITLAB_PROJECT_ID)."
+    )
+    common_config.add_argument(
+        "--gemini-api-key",
+        dest="gemini_api_key",
+        help="Override Gemini API Key (env: GEMINI_API_KEY)."
+    )
+
     summarize = subparsers.add_parser(
         "summarize",
         help="Generate a release summary for a GitLab Merge Request.",
         formatter_class=argparse.RawTextHelpFormatter,
+        parents=[common_config],
     )
     summarize.add_argument(
         "mr_id",
@@ -170,26 +259,24 @@ def parse_args():
         action="store_true",
         help="Save the full prompt to a debug file (e.g., debug_prompt_mr_123.md)."
     )
-    # Optional overrides for config/env values (highest precedence if provided)
-    summarize.add_argument(
-        "--gitlab-url",
-        dest="gitlab_url",
-        help="Override GitLab URL (env: GITLAB_URL)."
+    # Optional overrides for config/env values are provided via common_config
+
+    # code-review subcommand
+    review = subparsers.add_parser(
+        "code-review",
+        help="Generate a comprehensive code review for a GitLab Merge Request.",
+        formatter_class=argparse.RawTextHelpFormatter,
+        parents=[common_config],
     )
-    summarize.add_argument(
-        "--gitlab-private-token",
-        dest="gitlab_private_token",
-        help="Override GitLab Personal Access Token (env: GITLAB_PRIVATE_TOKEN)."
+    review.add_argument(
+        "mr_id",
+        type=int,
+        help="The IID (internal ID) of the Merge Request to review (e.g., 123)."
     )
-    summarize.add_argument(
-        "--gitlab-project-id",
-        dest="gitlab_project_id",
-        help="Override GitLab Project ID (env: GITLAB_PROJECT_ID)."
-    )
-    summarize.add_argument(
-        "--gemini-api-key",
-        dest="gemini_api_key",
-        help="Override Gemini API Key (env: GEMINI_API_KEY)."
+    review.add_argument(
+        "--debug",
+        action="store_true",
+        help="Save the full prompt to a debug file (e.g., debug_code_review_mr_123.md)."
     )
 
     args = parser.parse_args()
@@ -337,7 +424,11 @@ def initialize_clients(gitlab_url, gitlab_token, gemini_key):
         sys.exit(1)
 
 def fetch_mr_data(gl, project_id, mr_id):
-    """Fetch MR, commit messages and code diffs from GitLab."""
+    """Fetch MR, commit messages and code diffs from GitLab.
+
+    Returns (mr, commit_messages_str, code_diffs_str, labeled_diffs_str)
+    where labeled_diffs_str includes file paths as headers for better review prompts.
+    """
     try:
         print(f"🔍 Fetching data for MR !{mr_id} in project {project_id}...")
         project = gl.projects.get(project_id)
@@ -349,10 +440,18 @@ def fetch_mr_data(gl, project_id, mr_id):
         commit_messages = "\n".join(commit_messages_list)
 
         changes = mr.changes()
-        code_diffs = "\n".join([change['diff'] for change in changes['changes']])
+        diffs_only = []
+        labeled_diffs = []
+        for change in changes['changes']:
+            path = change.get('new_path') or change.get('old_path') or 'UNKNOWN_PATH'
+            diff = change.get('diff') or ''
+            diffs_only.append(diff)
+            labeled_diffs.append(f"FILE: {path}\n{diff}")
+        code_diffs = "\n".join(diffs_only)
+        labeled_code_diffs = "\n\n".join(labeled_diffs)
         print(f"✅ Found {len(changes['changes'])} changed files.")
 
-        return mr, commit_messages, code_diffs
+        return mr, commit_messages, code_diffs, labeled_code_diffs
     except gitlab.exceptions.GitlabError as e:
         print(f"❌ GitLab API Error: Could not fetch MR !{mr_id}. Status code: {e.response_code}")
         print(f"   Message: {e.error_message}")
@@ -386,30 +485,54 @@ def main():
     gl, model = initialize_clients(gitlab_url, gitlab_token, gemini_key)
 
     # --- FETCH DATA FROM GITLAB ---
-    mr, commit_messages, code_diffs = fetch_mr_data(gl, project_id, args.mr_id)
+    mr, commit_messages, code_diffs, labeled_code_diffs = fetch_mr_data(gl, project_id, args.mr_id)
 
-    styles_to_run = _resolve_styles(args.styles)
+    if args.command == "summarize":
+        styles_to_run = _resolve_styles(getattr(args, "styles", []))
+        for style in styles_to_run:
+            print(f"🧠 Generating summary (style: {style})... This may take a moment")
 
-    for style in styles_to_run:
-        print(f"🧠 Generating summary (style: {style})... This may take a moment")
-        # --- 5. PROCESS WITH GEMINI ---
-        prompt = build_prompt(style, mr, commit_messages, code_diffs)
+            prompt = build_prompt(style, mr, commit_messages, code_diffs)
 
-        # Save prompt to a debug file if requested
+            # Save prompt to a debug file if requested
+            if args.debug:
+                debug_filename = f"debug_prompt_mr_{args.mr_id}.{style}.md"
+                if write_file(debug_filename, prompt):
+                    print(f"🐛 Debug prompt saved to: {debug_filename}")
+
+            release_summary = generate_summary(model, prompt)
+
+            output_filename = f"release_summary_mr_{mr.iid}.{style}.md"
+            if write_file(output_filename, release_summary):
+                print("\n" + "="*50)
+                print(f"🎉 Success! Summary saved to: {output_filename}")
+                print("="*50 + "\n")
+                print(release_summary)
+            else:
+                sys.exit(1)
+
+    # Handle code-review subcommand
+    if args.command == "code-review":
+        # Build code review prompt using labeled diffs for file context
+        review_prompt = CODE_REVIEW_PROMPT_TEMPLATE.format(
+            mr_title=mr.title,
+            mr_description=mr.description,
+            commit_messages=commit_messages,
+            labeled_code_diffs=labeled_code_diffs,
+        )
         if args.debug:
-            debug_filename = f"debug_prompt_mr_{args.mr_id}.{style}.md"
-            if write_file(debug_filename, prompt):
-                print(f"🐛 Debug prompt saved to: {debug_filename}")
+            debug_filename = f"debug_code_review_prompt_mr_{args.mr_id}.md"
+            if write_file(debug_filename, review_prompt):
+                print(f"🐛 Debug code review prompt saved to: {debug_filename}")
 
-        release_summary = generate_summary(model, prompt)
-
-        # --- 6. SAVE OUTPUT TO FILE ---
-        output_filename = f"release_summary_mr_{mr.iid}.{style}.md"
-        if write_file(output_filename, release_summary):
+        print("🧠 Generating code review... This may take a moment")
+        review_output = generate_summary(model, review_prompt)
+        review_filename = f"code_review_mr_{mr.iid}.md"
+        if write_file(review_filename, review_output):
             print("\n" + "="*50)
-            print(f"🎉 Success! Summary saved to: {output_filename}")
+            print(f"🎉 Success! Code review saved to: {review_filename}")
             print("="*50 + "\n")
-            print(release_summary)
+            print(review_output)
         else:
             sys.exit(1)
 
