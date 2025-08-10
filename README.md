@@ -50,25 +50,42 @@ export GEMINI_API_KEY="your_gemini_api_key"
 -   `GITLAB_PROJECT_ID`: The ID of your project. You can find this on your project's home page in GitLab, under the project name.
 -   `GEMINI_API_KEY`: Your API key for the Google Gemini service.
 
+### Persisting configuration (TOML)
+
+When required values are missing, the tool will prompt you interactively and then persist them to `~/.gitlab-helper/config.toml` automatically. Subsequent runs will load values from the config file. Precedence matches AWS CLI: command-line flags > environment variables > config file. Example `config.toml`:
+
+```toml
+GITLAB_URL = "https://gitlab.com"
+GITLAB_PRIVATE_TOKEN = "<your_token>"
+GITLAB_PROJECT_ID = "<project_id>"
+GEMINI_API_KEY = "<gemini_api_key>"
+```
+
 ## Usage
 
 To run the script, use the following command, replacing `123` with the IID (Internal ID) of your Merge Request.
 
 ```bash
-python3 main.py <mr_id> [--style clients|devops|developers] [--debug]
+python3 main.py summarize <mr_id> [--style clients|devops|developers|all ...] [--debug]
 ```
 
 ### Example
 
 ```bash
-# Clients style (default)
-python3 main.py 42
+# All styles in one run (default)
+python3 main.py summarize 42
+
+# Clients style
+python3 main.py summarize 42 --style clients
 
 # DevOps style
-python3 main.py 42 --style devops
+python3 main.py summarize 42 --style devops
 
 # Developers style
-python3 main.py 42 --style developers
+python3 main.py summarize 42 --style developers
+
+# Multiple styles in one run
+python3 main.py summarize 42 --style clients devops
 ```
 
 This command will:
@@ -82,7 +99,7 @@ This command will:
 If you want to inspect the prompt that is sent to the Gemini API, you can use the `--debug` flag.
 
 ```bash
-python3 main.py 42 --debug
+python3 main.py summarize 42 --debug
 ```
 
 This will create an additional file named `debug_prompt_mr_42.<style>.md` (e.g., `debug_prompt_mr_42.clients.md`) containing the full prompt.
