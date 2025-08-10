@@ -8,7 +8,7 @@ import toml
 import gitlab
 import google.generativeai as genai
 
-GEMINI_MODEL="gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 CONFIG_DIR = os.path.expanduser("~/.gitai-tool")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.toml")
 
@@ -229,6 +229,12 @@ def parse_args():
         dest="gemini_api_key",
         help="Override Gemini API Key (env: GEMINI_API_KEY)."
     )
+    common_config.add_argument(
+        "--model",
+        dest="model",
+        default=DEFAULT_MODEL,
+        help=(f"Gemini model identifier. Defaults to '{DEFAULT_MODEL}'."),
+    )
 
     summarize = subparsers.add_parser(
         "summarize",
@@ -412,12 +418,12 @@ def load_config(args):
         values["GEMINI_API_KEY"],
     )
 
-def initialize_clients(gitlab_url, gitlab_token, gemini_key):
+def initialize_clients(gitlab_url, gitlab_token, gemini_key, model_name):
     """Initialize GitLab and Gemini clients."""
     try:
         gl = gitlab.Gitlab(gitlab_url, private_token=gitlab_token)
         genai.configure(api_key=gemini_key)
-        model = genai.GenerativeModel(GEMINI_MODEL)
+        model = genai.GenerativeModel(model_name)
         return gl, model
     except Exception as e:
         print(f"❌ Error initializing APIs: {e}")
@@ -482,7 +488,7 @@ def main():
     gitlab_url, gitlab_token, project_id, gemini_key = load_config(args)
 
     # --- INITIALIZE APIS ---
-    gl, model = initialize_clients(gitlab_url, gitlab_token, gemini_key)
+    gl, model = initialize_clients(gitlab_url, gitlab_token, gemini_key, getattr(args, "model", DEFAULT_MODEL))
 
     # --- FETCH DATA FROM GITLAB ---
     mr, commit_messages, code_diffs, labeled_code_diffs = fetch_mr_data(gl, project_id, args.mr_id)

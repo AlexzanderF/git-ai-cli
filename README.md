@@ -45,7 +45,7 @@ gitai-tool --help
 
 ### Persisting configuration (TOML)
 
-When required values are missing, the tool will prompt you interactively and then persist them to `~/.git-ai/config.toml` automatically. Subsequent runs will load values from the config file. Precedence matches AWS CLI: command-line flags > environment variables > config file. Example `config.toml`:
+When required values are missing, the tool will prompt you interactively and then persist them to `~/.gitai-tool/config.toml` automatically. Subsequent runs will load values from the config file. Precedence matches AWS CLI: command-line flags > environment variables > config file. Example `config.toml`:
 
 ```toml
 GITLAB_URL = "https://gitlab.com"
@@ -58,16 +58,22 @@ GEMINI_API_KEY = "<gemini_api_key>"
 
 After installation with `pipx` or `pip`, use the global command `gitai-tool`. The tool provides two main commands: `summarize` and `code-review`.
 
+Common flags available to all commands:
+
+-   `--gitlab-url`, `--gitlab-private-token`, `--gitlab-project-id`, `--gemini-api-key`
+-   `--model`: Gemini model identifier. Defaults to `gemini-2.5-flash`.
+
 ### Summarize a Merge Request
 
 Generates a "What's New" summary for a GitLab Merge Request, tailored to different audiences.
 
 ```bash
-gitai-tool summarize <mr_id> [--style <style1> <style2>...] [--debug]
+gitai-tool summarize <mr_id> [--style <style1> <style2>...] [--model <full-gemini-model>] [--debug]
 ```
 
 -   `<mr_id>`: The IID (Internal ID) of the Merge Request to analyze (e.g., `42`).
 -   `--style`: One or more summary styles. Choices: `clients`, `devops`, `developers`. You can also use `all` to generate all of them. If omitted, it defaults to generating all styles.
+-   `--model`: Full Gemini model name to use. Defaults to `gemini-2.5-flash`.
 -   `--debug`: Save the full prompt to a debug file for inspection.
 
 #### Examples
@@ -94,10 +100,11 @@ This command will:
 Generates a comprehensive, structured code review from the Merge Request's diffs.
 
 ```bash
-gitai-tool code-review <mr_id> [--debug]
+gitai-tool code-review <mr_id> [--model <full-gemini-model>] [--debug]
 ```
 
 -   `<mr_id>`: The IID of the Merge Request to review.
+-   `--model`: Full Gemini model name to use. Defaults to `gemini-2.5-flash`.
 -   `--debug`: Save the full prompt to a debug file.
 
 This command outputs a `code_review_mr_<iid>.md` file containing a detailed review with structured findings on security, correctness, performance, readability, and more, along with an actionable checklist.
