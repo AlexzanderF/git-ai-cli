@@ -9,7 +9,7 @@ import gitlab
 import google.generativeai as genai
 
 GEMINI_MODEL="gemini-2.5-flash"
-CONFIG_DIR = os.path.expanduser("~/.git-ai")
+CONFIG_DIR = os.path.expanduser("~/.gitai-tool")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.toml")
 
 # --- PROMPT TEMPLATES ---
