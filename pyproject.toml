@@ -28,7 +28,7 @@ dependencies = [
 
 [project.scripts]
 # This is the command users will run globally after install
-git-ai = "main:main"
+gitai-tool = "main:main"
 
 [tool.setuptools]
 # Include single-file module at repository root

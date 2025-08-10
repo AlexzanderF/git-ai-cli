@@ -23,34 +23,24 @@ Before you begin, ensure you have the following:
 
 ### Install with pipx (recommended)
 
-Use pipx to install and run the CLI in an isolated virtual environment, available globally as `git-ai`:
+Install from PyPI and get the global command `gitai-tool`:
 
 ```bash
-# If you don't have pipx yet (macOS/Homebrew)
-brew list pipx >/dev/null 2>&1 || brew install pipx
-pipx ensurepath
-
-# From a cloned repo or local path
-git clone https://github.com/AlexzanderF/git-ai-cli.git
-cd git-ai-cli
-pipx install .
-
-# Upgrade later
-pipx upgrade git-ai
+pipx install gitai-tool
+gitai-tool --help
 ```
 
-You can also install directly from Git using:
+To upgrade later:
 
 ```bash
-pipx install git+https://github.com/AlexzanderF/git-ai-cli.git
+pipx upgrade gitai-tool
 ```
-
-After installation, the global command is `git-ai`.
 
 ### Install with pip (alternative)
 
 ```bash
-pip install -r requirements.txt
+pip install gitai-tool
+gitai-tool --help
 ```
 
 ### Persisting configuration (TOML)
@@ -66,14 +56,14 @@ GEMINI_API_KEY = "<gemini_api_key>"
 
 ## Usage
 
-After installation with `pipx`, use the global command `git-ai`. The tool provides two main commands: `summarize` and `code-review`.
+After installation with `pipx` or `pip`, use the global command `gitai-tool`. The tool provides two main commands: `summarize` and `code-review`.
 
 ### Summarize a Merge Request
 
 Generates a "What's New" summary for a GitLab Merge Request, tailored to different audiences.
 
 ```bash
-git-ai summarize <mr_id> [--style <style1> <style2>...] [--debug]
+gitai-tool summarize <mr_id> [--style <style1> <style2>...] [--debug]
 ```
 
 -   `<mr_id>`: The IID (Internal ID) of the Merge Request to analyze (e.g., `42`).
@@ -84,13 +74,13 @@ git-ai summarize <mr_id> [--style <style1> <style2>...] [--debug]
 
 ```bash
 # Generate summaries for all styles (default behavior)
-git-ai summarize 42
+gitai-tool summarize 42
 
 # Generate a client-focused summary
-git-ai summarize 42 --style clients
+gitai-tool summarize 42 --style clients
 
 # Generate summaries for both developers and devops
-git-ai summarize 42 --style developers devops
+gitai-tool summarize 42 --style developers devops
 ```
 
 This command will:
@@ -104,7 +94,7 @@ This command will:
 Generates a comprehensive, structured code review from the Merge Request's diffs.
 
 ```bash
-git-ai code-review <mr_id> [--debug]
+gitai-tool code-review <mr_id> [--debug]
 ```
 
 -   `<mr_id>`: The IID of the Merge Request to review.
