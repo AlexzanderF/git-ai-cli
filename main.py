@@ -7,196 +7,12 @@ import getpass
 import toml
 import gitlab
 import google.generativeai as genai
+from services.gitlab_service import fetch_mr_summary_data, fetch_mr_code_review_data
+from services.promts_service import build_summary_prompt, build_code_review_prompt, SUMMARY_PROMPT_STYLES_TEMPLATES
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 CONFIG_DIR = os.path.expanduser("~/.gitai-tool")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.toml")
-
-# --- PROMPT TEMPLATES ---
-CLIENTS_PROMPT_TEMPLATE = """
-You are a Project Manager writing a "What's New" summary for our clients.
-Your task is to analyze the technical data from a GitLab Merge Request, including commit messages and code diffs, to create a clear, benefit-oriented summary.
-
-**Guidelines:**
-- **Audience:** Our clients are not technical. Avoid jargon, file paths, and function names.
-- **Tone:** Friendly, professional, and exciting. Be concise and to the point.
-- **Format:** Use Markdown. Start with a brief, engaging overview paragraph. Then create two sections: '✨ New Features' and '🐛 Bug Fixes'.
-- **Focus:** Translate technical actions into client benefits. For example, "Refactored the user auth service" should become "We've improved the speed and security of logging in."
-- **Content:** Base your summary ONLY on the information provided. Ignore internal changes (e.g., CI/CD, tests, documentation) unless they have a direct client-facing impact.
-
-**Merge Request Title:** {mr_title}
-**Merge Request Description:** {mr_description}
-
-Here is the data for the Merge Request:
-
---- BEGIN COMMIT MESSAGES ---
-{commit_messages}
---- END COMMIT MESSAGES ---
-
---- BEGIN CODE CHANGES / DIFFERENCES ---
-{code_diffs}
---- END CODE CHANGES / DIFFERENCES ---
-"""
-
-DEVOPS_PROMPT_TEMPLATE = """
-You are a DevOps engineer preparing a release operations brief for this Merge Request.
-Analyze the commit messages and code diffs and extract ONLY the operationally relevant details.
-
-**Audience:** DevOps/SRE/Platform engineers.
-**Tone:** Precise, technical, checklist-oriented.
-**Output Format (Markdown):**
-- Start with a short summary paragraph of the release scope in operational terms.
-- Then provide the following sections with bullet points. Include only sections that have content.
-
-### Environment Variables
-- New/changed/removed variables with default values, required/optional, scope (runtime/build), and where used.
-
-### Database Migrations
-- Migration files/commands, forward/backward safety, downtime risk, data-migration steps, long-running operations.
-
-### Seeds / Initialization Data
-- Seed scripts, idempotency, when/how to run.
-
-### Infrastructure / IaC
-- Terraform/CloudFormation/K8s manifests/Helm changes, new resources, IAM/permissions, networking, storage, scaling.
-
-### CI/CD Pipeline Changes
-- New jobs, stages, approvals, required secrets, cache/artifacts, concurrency, schedules.
-
-### Logging & Monitoring
-- New log fields/levels, sinks, tracing/metrics/dashboards/alerts, sampling changes.
-
-### Security
-- Secrets management, token scopes, RBAC, exposure changes, dependency vulnerabilities.
-
-### Dependencies & Runtime
-- New/updated packages, language/runtime versions, container base images, system packages.
-
-### Operational Tasks / Runbook
-- One-time actions, manual steps, feature flags, toggles, rollback plan.
-
-### Breaking Changes / Action Required
-- Explicit callouts with required actions and ownership.
-
-Base your brief ONLY on the provided information.
-
-**Merge Request Title:** {mr_title}
-**Merge Request Description:** {mr_description}
-
---- BEGIN COMMIT MESSAGES ---
-{commit_messages}
---- END COMMIT MESSAGES ---
-
---- BEGIN CODE CHANGES / DIFFERENCES ---
-{code_diffs}
---- END CODE CHANGES / DIFFERENCES ---
-"""
-
-DEVELOPERS_PROMPT_TEMPLATE = """
-You are a senior software engineer writing a technical release synopsis for the developers who implemented this work.
-Provide a concise, engineer-facing overview that helps verify deployment and functionality.
-
-**Audience:** Application/backend/frontend engineers.
-**Tone:** Technical, direct, action-oriented.
-**Output Format (Markdown):**
-- Start with a brief overview paragraph.
-- Then include the following sections as relevant:
-  - Features / Enhancements
-  - Bug Fixes
-  - Refactors / Cleanup
-  - API Changes (endpoints, request/response, contracts)
-  - Configuration (including env vars)
-  - Database (migrations, seeds)
-  - Dependencies / Tooling
-  - Tests (added/updated, coverage notes)
-  - Known Issues / Follow-ups
-  - Deployment Checklist (verifications to perform)
-
-Focus on what changed technically and what to verify after deploy. Avoid client-facing language.
-Base your synopsis ONLY on the provided information.
-
-**Merge Request Title:** {mr_title}
-**Merge Request Description:** {mr_description}
-
---- BEGIN COMMIT MESSAGES ---
-{commit_messages}
---- END COMMIT MESSAGES ---
-
---- BEGIN CODE CHANGES / DIFFERENCES ---
-{code_diffs}
---- END CODE CHANGES / DIFFERENCES ---
-"""
-
-PROMPT_TEMPLATES = {
-    "clients": CLIENTS_PROMPT_TEMPLATE,
-    "devops": DEVOPS_PROMPT_TEMPLATE,
-    "developers": DEVELOPERS_PROMPT_TEMPLATE,
-}
-
-# --- CODE REVIEW PROMPT TEMPLATE ---
-CODE_REVIEW_PROMPT_TEMPLATE = """
-You are a seasoned staff-level engineer performing a thorough code review of a GitLab Merge Request.
-Use ONLY the provided commit messages and diffs. Do not invent context. If something is ambiguous, mark it as "Needs verification".
-
-Produce a high-signal, developer-facing review in Markdown with the following structure. Be concrete and actionable.
-
-1. Summary
-   - One short paragraph that explains the scope and main risk areas.
-
-2. High-Priority Findings (BLOCKER/MAJOR)
-   - For each, include: [SEVERITY] File path (and function/class if visible), What’s wrong, Why it matters, How to fix (with a concise code snippet if helpful).
-
-3. Security
-   - Secrets handling, injection risks, authz/authn checks, SSRF, XSS, CSRF, path traversal, unsafe deserialization, dependency vulnerabilities.
-
-4. Correctness & Robustness
-   - Edge cases, error handling, input validation, null/None checks, off-by-one, race conditions, concurrency issues.
-
-5. Performance
-   - Hot paths, N+1 queries, unnecessary allocations, blocking I/O, inefficient algorithms, cache opportunities.
-
-6. Readability & Maintainability
-   - Naming, complexity, duplication (DRY), separation of concerns, dead code, comments/docstrings needed, file structure.
-
-7. API & Contracts
-   - Backward compatibility, request/response shape changes, error codes, pagination, headers, deprecations, versioning.
-
-8. Data & Migrations
-   - Migrations safety (forwards/backwards), data transformations, downtime risk, long-running tasks, indexes.
-
-9. Observability
-   - Logging levels/PII, metrics, tracing spans, dashboards, alerts, sampling.
-
-10. Tests
-   - Missing/fragile tests, coverage gaps, mocking issues, e2e cases to add.
-
-11. Dependencies & Build
-   - New/updated packages, licensing, supply chain, build/runtime changes.
-
-12. Risk & Rollback
-   - Feature flags/toggles, rollout plan, rollback strategy, safeguards.
-
-Finish with:
-13. Actionable Checklist
-   - A concise checklist of the most important follow-ups grouped by severity.
-
-Guidelines:
-- Reference specific files and hunks when possible. Prefer: path:line range (from diff context) when the information is present.
-- Use severity tags: [BLOCKER], [MAJOR], [MINOR], [NIT]. Keep nitpicks short.
-- Prioritize impact and clarity over volume. Avoid generic advice.
-- Do not include files or topics not present in the diffs.
-
-Merge Request Title: {mr_title}
-Merge Request Description: {mr_description}
-
---- BEGIN COMMIT MESSAGES ---
-{commit_messages}
---- END COMMIT MESSAGES ---
-
---- BEGIN CODE CHANGES (WITH FILE PATHS) ---
-{labeled_code_diffs}
---- END CODE CHANGES (WITH FILE PATHS) ---
-"""
 
 def parse_args():
     """Parse CLI arguments."""
@@ -291,18 +107,9 @@ def parse_args():
         sys.exit(2)
     return args
 
-def build_prompt(style, mr, commit_messages, code_diffs):
-    template = PROMPT_TEMPLATES.get(style)
-    return template.format(
-        mr_title=mr.title,
-        mr_description=mr.description,
-        commit_messages=commit_messages,
-        code_diffs=code_diffs,
-    )
-
-def _resolve_styles(requested_styles):
+def _validate_selected_styles(requested_styles):
     if not requested_styles or "all" in requested_styles:
-        return list(PROMPT_TEMPLATES.keys())
+        return list(SUMMARY_PROMPT_STYLES_TEMPLATES.keys())
     # Deduplicate while preserving order
     seen = set()
     result = []
@@ -429,40 +236,6 @@ def initialize_clients(gitlab_url, gitlab_token, gemini_key, model_name):
         print(f"❌ Error initializing APIs: {e}")
         sys.exit(1)
 
-def fetch_mr_data(gl, project_id, mr_id):
-    """Fetch MR, commit messages and code diffs from GitLab.
-
-    Returns (mr, commit_messages_str, code_diffs_str, labeled_diffs_str)
-    where labeled_diffs_str includes file paths as headers for better review prompts.
-    """
-    try:
-        print(f"🔍 Fetching data for MR !{mr_id} in project {project_id}...")
-        project = gl.projects.get(project_id)
-        mr = project.mergerequests.get(mr_id)
-
-        commits = list(mr.commits(all=True))
-        print(f"✅ Found {len(commits)} commits.")
-        commit_messages_list = [f"- {commit.title}" for commit in commits]
-        commit_messages = "\n".join(commit_messages_list)
-
-        changes = mr.changes()
-        diffs_only = []
-        labeled_diffs = []
-        for change in changes['changes']:
-            path = change.get('new_path') or change.get('old_path') or 'UNKNOWN_PATH'
-            diff = change.get('diff') or ''
-            diffs_only.append(diff)
-            labeled_diffs.append(f"FILE: {path}\n{diff}")
-        code_diffs = "\n".join(diffs_only)
-        labeled_code_diffs = "\n\n".join(labeled_diffs)
-        print(f"✅ Found {len(changes['changes'])} changed files.")
-
-        return mr, commit_messages, code_diffs, labeled_code_diffs
-    except gitlab.exceptions.GitlabError as e:
-        print(f"❌ GitLab API Error: Could not fetch MR !{mr_id}. Status code: {e.response_code}")
-        print(f"   Message: {e.error_message}")
-        sys.exit(1)
-
 def generate_summary(model, prompt):
     """Generate the summary text from the model for a given prompt."""
     try:
@@ -490,15 +263,16 @@ def main():
     # --- INITIALIZE APIS ---
     gl, model = initialize_clients(gitlab_url, gitlab_token, gemini_key, getattr(args, "model", DEFAULT_MODEL))
 
-    # --- FETCH DATA FROM GITLAB ---
-    mr, commit_messages, code_diffs, labeled_code_diffs = fetch_mr_data(gl, project_id, args.mr_id)
-
+    # Handle summarize subcommand
     if args.command == "summarize":
-        styles_to_run = _resolve_styles(getattr(args, "styles", []))
+        # --- FETCH DATA FROM GITLAB ---
+        mr, commit_messages, code_diffs = fetch_mr_summary_data(gl, project_id, args.mr_id)
+
+        styles_to_run = _validate_selected_styles(getattr(args, "styles", []))
         for style in styles_to_run:
             print(f"🧠 Generating summary (style: {style})... This may take a moment")
 
-            prompt = build_prompt(style, mr, commit_messages, code_diffs)
+            prompt = build_summary_prompt(style, mr, commit_messages, code_diffs)
 
             # Save prompt to a debug file if requested
             if args.debug:
@@ -519,13 +293,13 @@ def main():
 
     # Handle code-review subcommand
     if args.command == "code-review":
+        # --- FETCH DATA FROM GITLAB ---
+        mr, commit_messages, labeled_code_diffs, full_files_content = fetch_mr_code_review_data(gl, project_id, args.mr_id)
+
         # Build code review prompt using labeled diffs for file context
-        review_prompt = CODE_REVIEW_PROMPT_TEMPLATE.format(
-            mr_title=mr.title,
-            mr_description=mr.description,
-            commit_messages=commit_messages,
-            labeled_code_diffs=labeled_code_diffs,
-        )
+        review_prompt = build_code_review_prompt(mr, commit_messages, labeled_code_diffs, full_files_content)
+
+        # Save prompt to a debug file if requested
         if args.debug:
             debug_filename = f"debug_code_review_prompt_mr_{args.mr_id}.md"
             if write_file(debug_filename, review_prompt):
